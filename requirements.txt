@@ -1,6 +1,6 @@
 streamlit==1.33.0
-mediapipe==0.10.8
+mediapipe==0.10.21          # l’ultima con wheel per Python-3.12
 opencv-python-headless==4.8.1.78
 pillow
 numpy
-protobuf<4          # richiesto da mediapipe
+protobuf<4                  # necessario per Mediapipe
