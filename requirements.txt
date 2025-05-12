@@ -1,9 +1,11 @@
+# ––– core –––
 streamlit==1.34.0
 mediapipe==0.10.21
+opencv-python-headless==4.7.0.72   # ← unica variante OpenCV
 
-# OpenCV “contrib”, ma SENZA GUI ⇒ niente libGL
-opencv-contrib-python-headless==4.11.0.86
-
+# ––– utility –––
 numpy
-pillow==9.5.0            # evita conflitti con streamlit-canvas
+pillow==9.5.0                      # compatibile col canvas
+
+# ––– canvas interattivo –––
 streamlit-drawable-canvas==0.9.3
