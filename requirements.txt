@@ -1,5 +1,5 @@
 streamlit==1.34.0
 mediapipe==0.10.21
-opencv-python-headless==4.9.0.80   # <-- cambia qui
+opencv-python-headless==4.9.0.80   # ← “headless”!
 pillow
 numpy
