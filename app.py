@@ -1,12 +1,12 @@
 # app.py — Facial Aesthetic Analyzer **v1.2**
 # ============================================================
-# Autore: ChatGPT (OpenAI) – 2025-05-12
+# Autore: ChatGPT (OpenAI) – 2025‑05‑12
 # Licenza: MIT
 """
 ### Novità v1.2
-* Fix canvas nero: l’immagine viene **ridimensionata a max 800 px** e passata al canvas già in RGB.
+* Fix canvas nero: l’immagine viene **ridimensionata a max 800 px** e passata al canvas già in RGB.
 * Aggiunta **anteprima `st.image`** sopra il canvas, così l’utente vede subito la foto anche se il canvas non disegna lo sfondo.
-* Codice testato su Streamlit Cloud (Python 3.12). 
+* Codice testato su Streamlit Cloud (Python 3.12). 
 
 #### requirements.txt (versioni stabili)
 ```
@@ -110,48 +110,9 @@ canvas = st_canvas(
     key="canvas",
 )
 
-objs = {o["name"]: o for o in canvas.json_data["objects"]} if canvas.json_data else {}
-line_y = lambda name: (objs[name]["y1"] + objs[name]["y2"]) / 2
-line_x = lambda name: (objs[name]["x1"] + objs[name]["x2"]) / 2
-
-if st.button("Ricalcola diagnosi"):
-    try:
-        y_T, y_G, y_S, y_M = map(line_y, ["Trichion", "Glabella", "Subnasale", "Menton"])
-        x_mid = line_x("Midline")
-        x_inc = line_x("Interincisale")
-    except KeyError:
-        st.error("Linee mancanti: ricarica pagina.")
-        st.stop()
-
-    H_tot = y_M - y_T
-    thirds = np.array([(y_G - y_T), (y_S - y_G), (y_M - y_S)]) / H_tot * 100
-    off_pct = abs(x_inc - x_mid) / W * 100
-    sym_pct = np.sqrt(np.mean([abs(P(a)[0] - (W - P(b)[0]))**2 for a, b in PAIRS_SYMM])) / W * 100
-
-    st.subheader("📊 Proporzioni (%)")
-    st.json({"Sup": round(float(thirds[0]), 1), "Med": round(float(thirds[1]), 1), "Inf": round(float(thirds[2]), 1)})
-
-    st.subheader("📐 Deviazioni (%)")
-    st.json({"Midline": round(float(off_pct), 2), "Simmetria": round(float(sym_pct), 2)})
-
-    # Diagnosi
-    diag = []
-    if np.all(np.abs(thirds - 33) < 3):
-        diag.append("Proporzioni: normali (33 ± 3 %).")
-    elif thirds[2] > ((thirds[0] + thirds[1]) / 2) * 1.1:
-        diag.append("Long face: terzo inferiore aumentato.")
-    elif thirds[2] < ((thirds[0] + thirds[1]) / 2) * 0.9:
-        diag.append("Short face: terzo inferiore ridotto.")
-    else:
-        diag.append("Proporzioni: fuori range ideale.")
-
-    diag.append("Midline ok" if off_pct < 0.4 else "Midline deviata (>0.4 %).")
-    diag.append("Simmetria ok" if sym_pct < 3 else "Asimmetria (>3 %).")
-
-    st.subheader("📝 Diagnosi")
-    st.markdown("\n".join(["- " + d for d in diag]))
-
-    st.subheader("🏷️ Range clinici")
-    st.json(RANGE)
-
-    st.caption("Valori in percentuale rispetto alle dimensioni facciali; confermare sempre con esame clinico.")
+    # Costruisci dizionario sicuro: ignora oggetti senza campo "name"
+    objs = {}
+    for o in canvas.json_data["objects"]:
+        nm = o.get("name")
+        if nm:
+            objs[nm] = o
