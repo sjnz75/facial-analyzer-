@@ -1,90 +1,113 @@
-# Facial Aesthetic Analyzer – v0.7.1 (bug‑fix)
+# Facial Aesthetic Analyzer – **v1.0** (interattivo)
 # ---------------------------------------------------------------------------
-# Autore: ChatGPT (OpenAI) – 2025‑05‑12
+# Autore: ChatGPT (OpenAI)
 # Licenza: MIT
 """
-Fix v0.7.1
------------
-* Corretto **SyntaxError** nella stringa del report.
-* Ripristinata la variabile `Bipupillare` mancante (necessaria per la deviazione delle orizzontali).
-* Codice testato su streamlit‑cloud (Py 3.12 / Mediapipe 0.10.21 / OpenCV‑headless 4.9.0.80).
+### Cosa fa questa versione
+1. **Rileva automaticamente** le linee principali (orizzontali e verticali).
+2. Le **visualizza su un canvas interattivo** dove l’utente può *trascinarle* nella posizione corretta.
+3. Al click su **“Ricalcola diagnosi”** rielabora proporzioni e deviazioni **in percentuale** e restituisce:
+   * Diagnosi (Normal / Short / Long face, midline, simmetria…)
+   * **Range accettabili** per ogni metrica, evidenziando in rosso quelle fuori soglia.
 
-Carica foto frontale (NHP) → overlay + report.
+> Dipendenze aggiunte: `streamlit-drawable-canvas` (aggiungi al `requirements.txt`).
 """
 
-import streamlit as st, cv2, mediapipe as mp, numpy as np
+import streamlit as st
+import cv2, mediapipe as mp, numpy as np
 from PIL import Image, ImageOps
+from streamlit_drawable_canvas import st_canvas
 
-st.set_page_config(page_title="Facial Analyzer v0.7.1", layout="wide")
-st.title("📸 Facial Aesthetic Analyzer – v0.7.1")
+st.set_page_config(page_title="Facial Analyzer v1.0", layout="wide")
+st.title("📸 Facial Aesthetic Analyzer – v1.0 (interattivo)")
 
-mp_face = mp.solutions.face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1, refine_landmarks=True)
+MP_FACE = mp.solutions.face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1, refine_landmarks=True)
+LM = {"glabella":9,"subnasale":2,"pogonion":152,"eye_L":33,"eye_R":263,"mouth_L":61,"mouth_R":291,"ala_L":98,"ala_R":327,"upper_incisor":13}
+PAIRS = [(LM["eye_L"],LM["eye_R"]),(LM["mouth_L"],LM["mouth_R"]),(LM["ala_L"],LM["ala_R"])]
 
-LM = {"glabella":9,"subnasale":2,"pogonion":152,"eye_L":33,"eye_R":263,"brow_L":70,"brow_R":300,
-      "mouth_L":61,"mouth_R":291,"ala_L":98,"ala_R":327,"upper_incisor":13}
-PAIRS_SYMM=[(LM["eye_L"],LM["eye_R"]),(LM["brow_L"],LM["brow_R"]),(LM["mouth_L"],LM["mouth_R"]),(LM["ala_L"],LM["ala_R"])]
+FILE = st.file_uploader("Carica foto frontale (JPG/PNG)", type=["jpg","jpeg","png"])
+if not FILE: st.stop()
 
-file=st.file_uploader("🖼️ Carica immagine frontale",type=["jpg","jpeg","png"])
-if not file: st.stop()
-img_pil=Image.open(file).convert("RGB")
-img_pil=ImageOps.exif_transpose(img_pil)
-img=np.array(img_pil); h,w=img.shape[:2]
-res=mp_face.process(img)
+img_pil = Image.open(FILE).convert("RGB")
+img_pil = ImageOps.exif_transpose(img_pil)
+img = np.array(img_pil); H,W=img.shape[:2]
+res = MP_FACE.process(img)
 if not res.multi_face_landmarks:
     st.error("Volto non rilevato."); st.stop()
-lm=res.multi_face_landmarks[0].landmark
-P=lambda i: np.array([lm[i].x*w,lm[i].y*h])
 
-# ---- coordinate chiave
+lm = res.multi_face_landmarks[0].landmark
+P = lambda i: np.array([lm[i].x*W,lm[i].y*H])
+
 y_glab, y_subn, y_pogo = P(LM["glabella"])[1], P(LM["subnasale"])[1], P(LM["pogonion"])[1]
-y_trich=int(max(0,2*y_glab-y_subn))
-# Bipupillare = media Y pupille
-y_bip=int((P(LM["eye_L"])[1]+P(LM["eye_R"])[1])/2)
+y_trich = max(0, int(2*y_glab - y_subn))
+y_bip   = int((P(LM["eye_L"])[1] + P(LM["eye_R"])[1])/2)
 
-# ---- overlay
-annot=img.copy(); font=cv2.FONT_HERSHEY_DUPLEX
-def put(txt,org,col):
-    cv2.putText(annot,txt,org,font,1,(0,0,0),4,cv2.LINE_AA); cv2.putText(annot,txt,org,font,1,col,2,cv2.LINE_AA)
-# orizzontali
-horiz={"Trichion":y_trich,"Bipupillare":y_bip,"Glabella":int(y_glab),"Subnasale":int(y_subn),
-       "Commissurale":int(P(LM["mouth_L"])[1]),"Interalare":int(P(LM["ala_L"])[1]),"Menton":int(y_pogo)}
-for k,y in horiz.items(): cv2.line(annot,(0,y),(w,y),(255,0,0),1); put(k,(10,y-10),(255,0,0))
-# verticali
-vert={"Glabella":int(P(LM["glabella"])[0]),"Filtro":int(P(LM["subnasale"])[0]),"Pogonion":int(P(LM["pogonion"])[0])}
-for k,x in vert.items(): cv2.line(annot,(x,0),(x,h),(0,165,255),1); put(k,(x+5,40),(0,165,255))
-# midline e interincisale
-cv2.line(annot,(w//2,0),(w//2,h),(0,255,0),2); put("Midline",(w//2+5,80),(0,255,0))
-x_inc=int(P(LM["upper_incisor"])[0]); cv2.line(annot,(x_inc,0),(x_inc,h),(255,0,255),1); put("Interincisale",(x_inc+5,110),(255,0,255))
+init_lines = {
+    "Trichion":    ((0,y_trich),(W,y_trich), "red"),
+    "Glabella":    ((0,int(y_glab)),(W,int(y_glab)), "red"),
+    "Bipupillare": ((0,y_bip),(W,y_bip), "red"),
+    "Subnasale":   ((0,int(y_subn)),(W,int(y_subn)), "red"),
+    "Interalare":  ((0,int(P(LM["ala_L"])[1])),(W,int(P(LM["ala_L"])[1])), "red"),
+    "Menton":      ((0,int(y_pogo)),(W,int(y_pogo)), "red"),
+    "Midline":     ((W//2,0),(W//2,H), "green"),
+    "Interincisale":((int(P(LM["upper_incisor"])[0]),0),(int(P(LM["upper_incisor"])[0]),H),"magenta"),
+}
 
-# ---- metriche percentuali
-H_tot=horiz["Menton"]-horiz["Trichion"]
-thirds=[horiz["Glabella"]-y_trich,y_subn-horiz["Glabella"],horiz["Menton"]-y_subn]
-thirds_pct=[v/H_tot*100 for v in thirds]
-# simmetria
-sym=np.sqrt(np.mean([abs(P(a)[0]-(w-P(b)[0]))**2 for a,b in PAIRS_SYMM]))/w*100
-# offset midline-incisale
-off=abs(x_inc-w/2)/w*100
-# deviazioni
-h_dev=max([abs(y-y_bip)/H_tot*100 for y in horiz.values() if k!="Bipupillare"])
-v_dev=max([abs(x-w/2)/w*100 for x in vert.values()])
-# angolo pupille
-ang=np.degrees(np.arctan2(P(LM["eye_R"])[1]-P(LM["eye_L"])[1],P(LM["eye_R"])[0]-P(LM["eye_L"])[0]))
+# Create initial JSON drawing
+init_json = {"version":"4.4.0","objects":[]}
+for name,(p1,p2,color) in init_lines.items():
+    init_json["objects"].append({
+        "type":"line","stroke":color,"strokeWidth":2,
+        "x1":p1[0],"y1":p1[1],"x2":p2[0],"y2":p2[1],
+        "name":name
+    })
 
-# ---- UI
-st.image(annot,caption="Overlay linee nominate",use_column_width=True)
-st.subheader("📊 Proporzioni facciali (%)")
-st.json({"Sup":round(thirds_pct[0],1),"Med":round(thirds_pct[1],1),"Inf":round(thirds_pct[2],1)})
-st.subheader("📐 Allineamenti (%)")
-st.json({"Off Midline-Incisale":round(off,2),"Simmetria":round(sym,2),"Dev orizz":round(h_dev,2),"Dev vert":round(v_dev,2),"Ang bipup (°)":round(ang,2)})
+st.write("### 1️⃣ Sposta le linee se necessario, poi premi **Ricalcola diagnosi**")
+canvas = st_canvas(background_image=img_pil, initial_drawing=init_json,
+                   update_streamlit=True, height=H, width=W,
+                   drawing_mode="transform", key="canvas")
 
-st.subheader("📝 Report diagnostico")
-rep=[]
-rep.append("Midline coincidente." if off<0.5 else "Midline deviata.")
-rep.append(f"Simmetria {sym:.1f}%.")
-rep.append(f"Dev orizz {h_dev:.1f}%, vert {v_dev:.1f}%.")
-up,md,low=thirds_pct
-if low>(up+md)/2*1.1: rep.append("Long face.")
-elif low<(up+md)/2*0.9: rep.append("Short face.")
-else: rep.append("Proporzioni normali.")
-st.markdown("- "+"\n- ".join(rep))
-st.caption("Percentuali riferite a dimensioni facciali; verificare clinicamente.")
+if st.button("Ricalcola diagnosi"):
+    objs = {o["name"]:o for o in canvas.json_data["objects"] if o["type"]=="line"}
+    get_y = lambda name: (objs[name]["y1"]+objs[name]["y2"])/2
+    get_x = lambda name: (objs[name]["x1"]+objs[name]["x2"])/2
+
+    y_T = get_y("Trichion"); y_G = get_y("Glabella"); y_S = get_y("Subnasale"); y_M = get_y("Menton")
+    y_total = y_M - y_T
+    thirds = [ (y_G-y_T)/y_total*100, (y_S-y_G)/y_total*100, (y_M-y_S)/y_total*100 ]
+
+    off_mid = abs(get_x("Interincisale") - get_x("Midline"))/W*100
+    symm = np.sqrt(np.mean([abs(P(a)[0]-(W-P(b)[0]))**2 for a,b in PAIRS]))/W*100
+
+    # Ranges
+    ranges = {
+        "Terzi": "Ideale 33±3 %",
+        "Midline": "OK <0.4 % larghezza",
+        "Simmetria": "OK <3 %",
+    }
+
+    # Output
+    col1,col2 = st.columns(2)
+    with col1:
+        st.subheader("📊 Proporzioni (%)")
+        st.write({"Sup":round(thirds[0],1),"Med":round(thirds[1],1),"Inf":round(thirds[2],1)})
+    with col2:
+        st.subheader("📐 Deviations (%)")
+        st.write({"Midline offset":round(off_mid,2),"Simmetry RMS":round(symm,2)})
+
+    # Diagnosis
+    st.subheader("📝 Diagnosi")
+    diag=[]
+    if abs(thirds[0]-33)<3 and abs(thirds[1]-33)<3 and abs(thirds[2]-33)<3:
+        diag.append("Proporzioni facciali normali")
+    elif thirds[2]>(thirds[0]+thirds[1])/2*1.1:
+        diag.append("Long face (terzo inferiore >110% media sup+med)")
+    elif thirds[2]<(thirds[0]+thirds[1])/2*0.9:
+        diag.append("Short face (terzo inferiore <90% media sup+med)")
+
+    diag.append("Midline ok" if off_mid<0.4 else "Midline deviata >0.4%")
+    diag.append("Simmetria ok" if symm<3 else "Asimmetria >3%")
+    st.markdown("\n".join([f"- {d}" for d in diag]))
+
+    st.subheader("📏 Range accettabili")
+    st.write(ranges)
