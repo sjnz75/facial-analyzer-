@@ -1,6 +1,7 @@
+pip==23.2.1
 streamlit==1.34.0
 mediapipe==0.10.21
-opencv-python-headless==4.9.0.80
-pillow
+opencv-python-headless==4.6.0.66
+pillow==9.5.0
 numpy
 streamlit-drawable-canvas==0.9.5
