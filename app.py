@@ -59,8 +59,8 @@ P=lambda i: np.array([lm[i].x*W, lm[i].y*H])
 
 # prime stime linee
 y_G,y_S,y_P = P(LM["glabella"])[1],P(LM["subnasale"])[1],P(LM["pogonion"])[1]
-y_T = max(0,int(2*y_G - y_S))
- y_B = int((P(LM["eye_L"])[1]+P(LM["eye_R"])[1])/2)
+y_T = max(0, int(2 * y_G - y_S))                       # Trichion stimato
+y_B = int((P(LM["eye_L"])[1] + P(LM["eye_R"])[1]) / 2) # Bipupillare
 
 init = {
  "Trichion":      ((0,y_T),(W,y_T),"#1E90FF"),
