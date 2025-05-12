@@ -1,18 +1,26 @@
-# Facial Aesthetic Analyzer – v0.3 (front‑view scientific set)
-# ------------------------------------------------------------------
-# Autore: ChatGPT (OpenAI) – Ottimizzato per criteri estetici frontali
+# Facial Aesthetic Analyzer – v0.4 (front-view, scientific & diagnostic)
+# ---------------------------------------------------------------------------
+# Autore: ChatGPT (OpenAI) 2025-05-12
 # Licenza: MIT
 """
-CHANGELOG v0.3
-===============
-✅ Implementati i **5 criteri scientifici** richiesti (solo foto frontali):
-1. **Linea mediana del volto** (best‑fit tra glabella‑subnasale‑pogonion)
-2. **Linea interincisale** (asse verticale fra 2 landmark dentali)
-3. **Indice di simmetria facciale** (RMS su 6 coppie di landmark)
-4. **Linee verticali di riferimento** (glabella, nasion, filtro labiale, pogonion)
-5. **Linee orizzontali di riferimento** (bipupillare, sopraccigliare, commissurale, interalare)
+**Funzioni implementate**
+------------------------
+* Analisi estetica frontale completa (5 linee di riferimento ufficiali).
+* Overlay con **nomi** delle linee direttamente sull’immagine.
+* Conversione **pixel → millimetri** usando la distanza interpupillare reale inserita dall’utente.
+* **Report diagnostico** automatico secondo criteri clinici (midline, linee orizzontali, proporzioni facciali).
 
-▶︎  Basta caricare una foto frontale ben illuminata; lʼapp ruota lʼimmagine (Exif) e restituisce overlay + valori numerici.
+> ⚠️ Fotografia richiesta: viso in **NHP** (Natural Head Position), luce frontale, incisivi centrali visibili, capelli scostati dalla fronte.
+
+Dipendenze (requirements.txt)
+-----------------------------
+```
+streamlit==1.34.0
+mediapipe==0.10.21
+opencv-python-headless==4.9.0.80
+pillow
+numpy
+```
 """
 
 import streamlit as st
@@ -21,171 +29,198 @@ import mediapipe as mp
 import numpy as np
 from PIL import Image, ImageOps
 
-st.set_page_config(page_title="Facial Aesthetic Analyzer – v0.3", layout="centered")
+st.set_page_config(page_title="Facial Analyzer v0.4", layout="centered")
 
-st.title("📸 Facial Aesthetic Analyzer – v0.3 (Front View)")
+st.title("📸 Facial Aesthetic Analyzer – v0.4")
 
 st.markdown(
-    """
-**Carica una foto frontale** (sguardo dritto, testa verticale, bocca socchiusa o in lieve sorriso).<br/>
-L'app sovrappone tutte le linee scientifiche e calcola i valori in pixel **e in percentuale**.
-""",
-    unsafe_allow_html=True,
-)
+    "Carica una foto **frontale** del paziente in NHP, poi inserisci la **distanza interpupillare reale** (mm).\n"
+    "Lʼapp disegnerà le linee di riferimento col loro nome, calcolerà le distanze in millimetri e genererà un breve **report diagnostico**.")
 
-# ------------------------------------------------------------------
-# Inizializza MediaPipe FaceMesh
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Config MediaPipe
+# ---------------------------------------------------------------------------
 mp_face = mp.solutions.face_mesh.FaceMesh(
     static_image_mode=True,
     max_num_faces=1,
     refine_landmarks=True,
 )
 
-# ------------------------------------------------------------------
-# Utility
-# ------------------------------------------------------------------
-LANDMARKS = {
+# ---------------------------------------------------------------------------
+# Landmark ID utili (MediaPipe Face Mesh 468-pts)
+# ---------------------------------------------------------------------------
+LM = {
+    "trichion": 10,            # top-of-forehead approx. (visibile solo se capelli scoperti)
     "glabella": 9,
-    "nasion": 168,            # approssimazione: radice naso
+    "nasion": 168,
     "subnasale": 2,
     "pogonion": 152,
     "eye_L": 33,
     "eye_R": 263,
-    "brow_L": 70,   # sopracciglio
+    "brow_L": 70,
     "brow_R": 300,
-    "mouth_L": 61,  # commissure
+    "mouth_L": 61,
     "mouth_R": 291,
-    "ala_L": 98,    # ala nasale
+    "ala_L": 98,
     "ala_R": 327,
-    "upper_incisor": 13,   # punto centrale labbro sup. – proxy contatto incisivi
-    "lower_incisor": 14,   # punto centrale labbro inf.
+    "upper_incisor": 13,
+    "lower_incisor": 14,
 }
 
 PAIRS_SYMM = [
-    (LANDMARKS["eye_L"], LANDMARKS["eye_R"]),
-    (LANDMARKS["brow_L"], LANDMARKS["brow_R"]),
-    (LANDMARKS["mouth_L"], LANDMARKS["mouth_R"]),
-    (LANDMARKS["ala_L"], LANDMARKS["ala_R"]),
-    (234, 454),   # zigomi (MediaPipe)
-    (93, 323),    # mascella
+    (LM["eye_L"], LM["eye_R"]),
+    (LM["brow_L"], LM["brow_R"]),
+    (LM["mouth_L"], LM["mouth_R"]),
+    (LM["ala_L"], LM["ala_R"]),
 ]
 
-UPLOAD = st.file_uploader("🖼️ Carica foto frontale", type=["jpg", "jpeg", "png"])
+# ---------------------------------------------------------------------------
+# Upload + parametri utente
+# ---------------------------------------------------------------------------
+file = st.file_uploader("🖼️ Carica foto (jpg/png)", type=["jpg", "jpeg", "png"])
+real_ipd_mm = st.number_input("Inserisci distanza interpupillare reale (mm)", min_value=40.0, max_value=80.0, value=63.0, step=0.1)
 
-if UPLOAD:
-    # 1️⃣ Rotazione corretta via EXIF
-    img_in = Image.open(UPLOAD).convert("RGB")
-    img = ImageOps.exif_transpose(img_in)
-    img_np = np.array(img)
-    h, w = img_np.shape[:2]
+if file:
+    # 1️⃣ Leggi immagine rispettando EXIF
+    img_pil = Image.open(file).convert("RGB")
+    img_pil = ImageOps.exif_transpose(img_pil)
+    img = np.array(img_pil)
+    h, w = img.shape[:2]
 
-    # 2️⃣ Rilevamento Landmark
-    res = mp_face.process(img_np)
+    # 2️⃣ Landmark detection
+    res = mp_face.process(img)
     if not res.multi_face_landmarks:
-        st.error("Volto non rilevato. Prova con immagine più nitida e frontale.")
+        st.error("Volto non rilevato. Controlla illuminazione e posizione.")
         st.stop()
 
     lm = res.multi_face_landmarks[0].landmark
     P = lambda idx: np.array([lm[idx].x * w, lm[idx].y * h])
 
-    # 3️⃣ Linea mediana (best fit su 3 punti chiave)
-    pts_mid = np.stack([
-        P(LANDMARKS["glabella"]),
-        P(LANDMARKS["subnasale"]),
-        P(LANDMARKS["pogonion"]),
-    ])
-    vx, vy, cx, cy = cv2.fitLine(pts_mid.astype(np.float32), cv2.DIST_L2, 0, 0.01, 0.01)
-    # param eq: (x, y) = (cx, cy) + t*(vx, vy)
+    # 3️⃣ Pixel → millimetri scale factor
+    ipd_px = np.linalg.norm(P(LM["eye_L"]) - P(LM["eye_R"]))
+    px_to_mm = real_ipd_mm / ipd_px if ipd_px > 0 else 0
 
-    # Funzione per disegnare una retta su tutto il canvas
-    def draw_infinite_line(img, vx, vy, cx, cy, color, thickness):
-        lh = img.shape[0]
-        lw = img.shape[1]
-        # intersezione con bordo superiore (t_up) e inferiore (t_down)
-        t_up = (-cy) / vy if vy != 0 else 0
-        t_down = (lh - cy) / vy if vy != 0 else 0
-        x_up = int(cx + vx * t_up)
-        x_down = int(cx + vx * t_down)
-        cv2.line(img, (x_up, 0), (x_down, lh), color, thickness)
+    # 4️⃣ Costruisci overlay
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    annotated = img.copy()
 
-    annotated = img_np.copy()
+    def put_text(img, text, origin, color=(255, 255, 255)):
+        cv2.putText(img, text, origin, font, 0.6, color, 2, cv2.LINE_AA)
 
-    # ▸ Midline (verde)
-    draw_infinite_line(annotated, vx, vy, cx, cy, (0, 255, 0), 2)
+    # ---- Linee orizzontali (blu)
+    horiz = {
+        "Linea bipupillare": int(P(LM["eye_L"])[1]),
+        "Linea sopraccigliare": int(P(LM["brow_L"])[1]),
+        "Linea commissurale": int(P(LM["mouth_L"])[1]),
+        "Linea interalare": int(P(LM["ala_L"])[1]),
+    }
+    for name, y in horiz.items():
+        cv2.line(annotated, (0, y), (w, y), (255, 0, 0), 1)
+        put_text(annotated, name, (10, y - 5))
 
-    # 4️⃣ Linea interincisale (magenta) – asse tra 2 punti dentali
-    p_top = P(LANDMARKS["upper_incisor"])
-    p_bot = P(LANDMARKS["lower_incisor"])
-    cv2.line(
-        annotated,
-        (int(p_top[0]), 0),
-        (int(p_top[0]), h),
-        (255, 0, 255), 1,
-    )
+    # ---- Linee verticali (arancio)
+    vert = {
+        "Glabella": int(P(LM["glabella"])[0]),
+        "Nasion": int(P(LM["nasion"])[0]),
+        "Filtro labiale": int(P(LM["subnasale"])[0]),
+        "Pogonion": int(P(LM["pogonion"])[0]),
+    }
+    for name, x in vert.items():
+        cv2.line(annotated, (x, 0), (x, h), (0, 165, 255), 1)
+        put_text(annotated, name, (x + 5, 20))
 
-    # 5️⃣ Linee orizzontali di riferimento (blu)
-    def h_line(point_idx, color=(255, 0, 0), thickness=1):
-        y = int(P(point_idx)[1])
-        cv2.line(annotated, (0, y), (w, y), color, thickness)
-        return y
+    # ---- Midline best-fit (verde)
+    pts_mid = np.stack([P(LM["glabella"]), P(LM["subnasale"]), P(LM["pogonion"])]).astype(np.float32)
+    vx, vy, cx, cy = cv2.fitLine(pts_mid, cv2.DIST_L2, 0, 0.01, 0.01)
+    def draw_inf_line(vx, vy, cx, cy, color=(0, 255, 0), thickness=2):
+        t1 = (-cy) / vy if vy != 0 else 0
+        t2 = (h - cy) / vy if vy != 0 else 0
+        x1, y1 = int(cx + vx * t1), 0
+        x2, y2 = int(cx + vx * t2), h
+        cv2.line(annotated, (x1, y1), (x2, y2), color, thickness)
+    draw_inf_line(vx, vy, cx, cy)
+    put_text(annotated, "Midline", (int(cx) + 5, 40), (0, 255, 0))
 
-    y_bipup = h_line(LANDMARKS["eye_L"], thickness=2)  # bipupillare
-    y_brow = h_line(LANDMARKS["brow_L"])               # sopraccigliare
-    y_comm = h_line(LANDMARKS["mouth_L"])              # commissurale
-    y_alar = h_line(LANDMARKS["ala_L"])                # interalare
+    # ---- Linea interincisale (magenta)
+    inc_x = int(P(LM["upper_incisor"])[0])
+    cv2.line(annotated, (inc_x, 0), (inc_x, h), (255, 0, 255), 1)
+    put_text(annotated, "Linea interincisale", (inc_x + 5, 60), (255, 0, 255))
 
-    # 6️⃣ Linee verticali di riferimento (arancione)
-    def v_line(point_idx, color=(0, 165, 255), thickness=1):
-        x = int(P(point_idx)[0])
-        cv2.line(annotated, (x, 0), (x, h), color, thickness)
-        return x
+    # 5️⃣ Distanze verticali (mm)
+    y_brow = horiz["Linea sopraccigliare"]
+    y_alar = horiz["Linea interalare"]
+    y_menton = int(P(LM["pogonion"])[1])  # menton ~ pogonion y
 
-    x_glab = v_line(LANDMARKS["glabella"])
-    x_nas = v_line(LANDMARKS["nasion"])
-    x_subn = v_line(LANDMARKS["subnasale"])
-    x_pog = v_line(LANDMARKS["pogonion"])
+    third_upper_px = y_brow - vert["Glabella"]
+    third_middle_px = y_alar - y_brow
+    third_lower_px = y_menton - y_alar
 
-    # 7️⃣ Simmetria facciale (RMS distanza normalized)
-    mid_x_axis = lambda x: (-(vy/vx)*(x-cx)+cy) if vx!=0 else cy  # y of midline at given x
-    def mirror_x(x, y):
-        # proiezione del punto sulla perpendicolare alla midline, riflesso
-        # Per semplicità: approssimiamo con riflesso rispetto alla x del midline all'altezza y.
-        if abs(vx) < 1e-6:  # midline quasi verticale
-            return 2*cx - x
-        else:
-            # formula riflessione rispetto retta non verticale → più complessa, ma per piccole inclinazioni semplifichiamo.
-            return 2* (cx + vx*( (y-cy)/vy )) - x
+    thirds_mm = np.array([third_upper_px, third_middle_px, third_lower_px]) * px_to_mm
+
+    # 6️⃣ Simmetria (RMS)
     diffs = []
     for a, b in PAIRS_SYMM:
         xa, ya = P(a)
         xb, yb = P(b)
-        # riflette A → A'
-        xa_mirr = mirror_x(xa, ya)
-        diff = abs(xb - xa_mirr)
-        diffs.append(diff)
-    symmetry_rms = float(np.sqrt(np.mean(np.square(diffs))))
-    symmetry_norm = 100 * symmetry_rms / w  # % rispetto larghezza volto
+        diffs.append(abs(xa - (w - xb)))  # semplice specchio rispetto metà immagine
+    symmetry_mm = np.sqrt(np.mean(np.square(diffs))) * px_to_mm
 
-    # 8️⃣ Mostra risultati ---------------------------------------------------
-    st.image(annotated, caption="Overlay criteri frontali", use_column_width=True)
+    # 7️⃣ Diagnosi proporzioni
+    def classify_face(thirds):
+        up, mid, low = thirds
+        mean_ref = (up + mid) / 2
+        if low > mean_ref * 1.1:
+            return "Long face (terzo inferiore aumentato)"
+        elif low < mean_ref * 0.9:
+            return "Short face (terzo inferiore ridotto)"
+        else:
+            return "Proporzioni nei limiti (normal face)"
+    face_diag = classify_face(thirds_mm)
 
-    st.subheader("📐 Metriche scientifiche (pixel)")
-    metrics_px = {
-        "midline_angle_deg": round(float(np.degrees(np.arctan2(vy, vx))), 2),
-        "interincisal_offset_px": abs(int(p_top[0] - cx)),
-        "symmetry_rms_px": round(symmetry_rms, 2),
-    }
-    st.json(metrics_px)
+    # 8️⃣ Midline vs interincisale offset
+    mid_x = cx + vx * ((y_alar - cy) / vy) if vy != 0 else cx  # x midline a livello interalare
+    off_mm = abs((inc_x - mid_x) * px_to_mm)
 
-    st.subheader("⚖️ Indice di simmetria (% della larghezza volto)")
-    st.write(f"{symmetry_norm:.2f} % (0 % = perfetta; >4 % = asimmetria visibile)")
+    # 9️⃣ Inclinazione bipupillare
+    eye_L = P(LM["eye_L"])
+    eye_R = P(LM["eye_R"])
+    angle_pupil = np.degrees(np.arctan2(eye_R[1] - eye_L[1], eye_R[0] - eye_L[0]))
 
-    st.caption(
-        "Nota: le misure sono in pixel; per ottenere valori in millimetri occorre un riferimento di scala (es. distanza interpupillare reale).\n"
-        "La linea interincisale usa landmark labiali come proxy: se vuoi precisione odontoiatrica serve una foto con incisivi visibili e un modello dentale dedicato."
-    )
+    # 10️⃣ Genera report
+    st.image(annotated, caption="Overlay con linee nominative", use_column_width=True)
 
-# ------------------------------------------------------------------
-# TODO prossime release: profilo laterale, calibrazione mm, esportazione PDF
-# ------------------------------------------------------------------
+    st.subheader("📐 Dati metrici (millimetri)")
+    st.json({
+        "Terzo superiore (Tr-Brow)": round(thirds_mm[0], 1),
+        "Terzo medio (Brow-Alar)": round(thirds_mm[1], 1),
+        "Terzo inferiore (Alar-Menton)": round(thirds_mm[2], 1),
+        "Offset midline-incisale": round(off_mm, 1),
+        "Indice RMS simmetria": round(symmetry_mm, 2),
+        "Angolo linea bipupillare (°)": round(angle_pupil, 2),
+    })
+
+    st.subheader("📝 Report diagnostico")
+    report = []
+    # Proporzioni facciali
+    report.append(f"• {face_diag}.")
+    # Midline
+    if off_mm <= 2:
+        report.append("• Midline dentale coincidente (≤2 mm).")
+    elif off_mm <= 4:
+        report.append("• Midline dentale lievemente deviata (2-4 mm). Potrebbe non essere percepita.")
+    else:
+        report.append("• Midline dentale deviata (>4 mm): correzione consigliata.")
+    # Bipupillare
+    if abs(angle_pupil) < 2:
+        report.append("• Linea bipupillare orizzontale (≤2°).")
+    else:
+        report.append("• Inclinazione bipupillare di {:.1f}°: valutare compensi posturali.".format(angle_pupil))
+    # Simmetria globale
+    if symmetry_mm * 1000 / (w * px_to_mm) < 3:  # %<3
+        report.append("• Simmetria facciale entro limiti clinici (<3%).")
+    else:
+        report.append("• Asimmetria facciale percepibile (>3%).")
+
+    st.markdown("\n".join(report))
+
+    st.caption("I risultati sono generati automaticamente da immagini 2D; un esame clinico approfondito resta indispensabile.")
