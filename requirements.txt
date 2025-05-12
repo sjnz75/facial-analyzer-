@@ -1,6 +1,10 @@
 streamlit==1.34.0
-mediapipe==0.10.21
-opencv-python-headless==4.7.0.72
+mediapipe==0.10.21           # serve per FaceMesh
+
+# OpenCV portato in modalità headless (contrib perché lo chiede mediapipe)
+opencv-contrib-python-headless==4.11.0.86   # wheel pronta, niente libGL
+
 numpy
-pillow==9.5.0
+pillow==10.3.0                # wheel pronta per Py 3.12, zlib incluso
+
 streamlit-drawable-canvas==0.9.3
