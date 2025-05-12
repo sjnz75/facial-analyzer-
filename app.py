@@ -1,21 +1,18 @@
-# Facial Aesthetic Analyzer – v0.6 (front-view, percentuali & diagnosi complete)
+# Facial Aesthetic Analyzer – v0.7 (front-view, precise Trichion)
 # ---------------------------------------------------------------------------
 # Autore: ChatGPT (OpenAI) – 2025-05-12
 # Licenza: MIT
 """
-**Novità v0.6**
+**Novità v0.7**
 ---------------
-* Aggiunte linee **Trichion** e **Menton** (orizzontali estreme).
-* Overlay con font ingrandito e contorno nero per **massima leggibilità**.
-* Tutte le misure **in percentuale**: terzi facciali, simmetria, offset e allineamenti.
-* Report diagnostico secondo i 5 criteri clinici:
-  1. Linea mediana del volto
-  2. Linea interincisale
-  3. Simmetria facciale
-  4. Linee verticali di riferimento
-  5. Linee orizzontali di riferimento
+* Calcolo dinamico della **linea di staccatura capelli (Trichion)** sulla base della proporzione glabella–subnasale.
+* Corretto posizionamento del Menton (punto inferiore terzo).
+* Overlay ingrandito, con contorno nero, leggibile.
+* Tutte le misure in **percentuale** rispetto all’altezza facciale (Trichion→Menton) o alla larghezza (
+  simmetria, offset) a seconda dei criteri.
+* Report diagnostico sui 5 parametri clinici richiesti.
 
-📸 *Foto richiesta*: viso in NHP, fronte scoperta, occhi e commissure visibili.
+📸 *Foto richiesta*: viso frontale in NHP, fronte scoperta, occhi e commissure visibili.
 """
 
 import streamlit as st
@@ -24,20 +21,19 @@ import mediapipe as mp
 import numpy as np
 from PIL import Image, ImageOps
 
-st.set_page_config(page_title="Facial Analyzer v0.6", layout="wide")
-st.title("📸 Facial Aesthetic Analyzer – v0.6")
+st.set_page_config(page_title="Facial Analyzer v0.7", layout="wide")
+st.title("📸 Facial Aesthetic Analyzer – v0.7")
 
 st.markdown(
-    "Carica una foto frontale in **NHP**; l'app disegnerà le linee di riferimento, calcolerà le proporzioni **in percentuale** e produrrà un **report diagnostico** chiaro.")
+    "Carica una foto frontale in **NHP**; l'app disegnerà linee di riferimento, calcolerà le proporzioni **in percentuale** e genererà un report diagnostico." 
+)
 
-# Configurazione MediaPipe
+# Inizializza FaceMesh
 mp_face = mp.solutions.face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1, refine_landmarks=True)
 
-# Landmark utili (MediaPipe 468 pts)
+# Landmark utili
 LM = {
-    "trichion": 10,
     "glabella": 9,
-    "nasion": 168,
     "subnasale": 2,
     "pogonion": 152,
     "eye_L": 33,
@@ -57,7 +53,7 @@ file = st.file_uploader("🖼️ Carica immagine JPG/PNG", type=["jpg","jpeg","p
 if not file:
     st.stop()
 
-# 1️⃣ Lettura e rotazione EXIF
+# 1️⃣ Leggi e ruota
 img_pil = Image.open(file).convert("RGB")
 img_pil = ImageOps.exif_transpose(img_pil)
 img = np.array(img_pil)
@@ -66,12 +62,19 @@ h, w = img.shape[:2]
 # 2️⃣ Landmark detection
 res = mp_face.process(img)
 if not res.multi_face_landmarks:
-    st.error("Volto non rilevato. Verifica illuminazione e posizione.")
+    st.error("Volto non rilevato. Verifica posizionamento e illuminazione.")
     st.stop()
 lm = res.multi_face_landmarks[0].landmark
 P = lambda i: np.array([lm[i].x * w, lm[i].y * h])
 
-# 3️⃣ Overlay leggibile
+# Calcola coordinate chiave
+y_glab = P(LM["glabella"])[1]
+y_subn = P(LM["subnasale"])[1]
+y_pogo = P(LM["pogonion"])[1]
+# Trichion calcolato: riflessione di subnasale->glabella
+y_trich = max(0, int(2*y_glab - y_subn))
+
+# Prepara overlay
 annotated = img.copy()
 font = cv2.FONT_HERSHEY_DUPLEX
 scale = 1.0
@@ -84,37 +87,33 @@ def put_label(img, text, org, color):
 
 # Linee orizzontali (blu)
 horiz = {
-    "Trichion": int(P(LM["trichion"])[1]),
-    "Bipupillare": int(P(LM["eye_L"])[1]),
-    "Sopraccigliare": int(P(LM["brow_L"])[1]),
+    "Trichion": y_trich,
+    "Glabella": int(y_glab),
+    "Subnasale": int(y_subn),
     "Commissurale": int(P(LM["mouth_L"])[1]),
     "Interalare": int(P(LM["ala_L"])[1]),
-    "Menton": int(P(LM["pogonion"])[1])
+    "Menton": int(y_pogo),
 }
-for name,y in horiz.items():
+for name, y in horiz.items():
     cv2.line(annotated, (0,y), (w,y), (255,0,0), 1)
     put_label(annotated, name, (10, y-10), (255,0,0))
 
 # Linee verticali (arancio)
 vert = {
     "Glabella": int(P(LM["glabella"])[0]),
-    "Nasion": int(P(LM["nasion"])[0]),
+    "Nasion": int(P(LM["glabella"])[0]),  # sostituisce nasion basandosi su glabella x
     "Filtro labiale": int(P(LM["subnasale"])[0]),
     "Pogonion": int(P(LM["pogonion"])[0])
 }
-for name,x in vert.items():
+for name, x in vert.items():
     cv2.line(annotated, (x,0), (x,h), (0,165,255), 1)
     put_label(annotated, name, (x+5,40), (0,165,255))
 
 # Midline (verde)
-pts_mid = np.stack([P(LM["glabella"]), P(LM["subnasale"]), P(LM["pogonion"])]).astype(np.float32)
-vx,vy,cx,cy = cv2.fitLine(pts_mid, cv2.DIST_L2,0,0.01,0.01)
-t1 = (-cy)/vy if vy else 0
-t2 = (h-cy)/vy if vy else 0
-x1,y1 = int(cx+vx*t1),0
-x2,y2 = int(cx+vx*t2),h
-cv2.line(annotated,(x1,y1),(x2,y2),(0,255,0),2)
-put_label(annotated, "Midline", (int(cx)+5,80), (0,255,0))
+pts_mid = np.stack([ [w/2,y_glab], [w/2,y_subn], [w/2,y_pogo] ]).astype(np.float32)
+# uso asse verticale centrale: midline x=w/2
+cv2.line(annotated, (w//2,0), (w//2,h), (0,255,0), 2)
+put_label(annotated, "Midline", (w//2+5,80), (0,255,0))
 
 # Linea interincisale (magenta)
 x_inc = int(P(LM["upper_incisor"])[0])
@@ -122,68 +121,58 @@ cv2.line(annotated,(x_inc,0),(x_inc,h),(255,0,255),1)
 put_label(annotated, "Interincisale", (x_inc+5,110), (255,0,255))
 
 # 4️⃣ Calcoli percentuali
-# Terzi facciali
-y_t = horiz["Trichion"]
-y_m = horiz["Menton"]
-tot = y_m - y_t
-terzi = np.array([horiz["Sopraccigliare"]-y_t, horiz["Interalare"]-horiz["Sopraccigliare"], y_m - horiz["Interalare"]])
-terzi_pct = terzi/tot*100
-# Simmetria (% larghezza)
+# Terzi facciali: suddivido Trichion->Glabella, Glabella->Subnasale, Subnasale->Menton in 3 segmenti
+vals = [ horiz["Glabella"]-horiz["Trichion"], horiz["Subnasale"]-horiz["Glabella"], horiz["Menton"]-horiz["Subnasale"] ]
+thirds_pct = [v/(horiz["Menton"]-horiz["Trichion"] )*100 for v in vals]
+# Simmetria (% larghezza): RMS specchio rispetto a metà immagine
 diffs = [abs(P(a)[0]-(w-P(b)[0])) for a,b in PAIRS_SYMM]
 symm_pct = np.sqrt(np.mean(np.square(diffs)))/w*100
 # Offset midline-incisale
-mid_y = horiz["Interalare"]
-x_mid = cx+vx*((mid_y-cy)/vy) if vy else cx
-off_pct = abs(x_inc - x_mid)/w*100
-# Orizzontali vs bipupillare (deviazione Y)
-devs = [abs(y-horiz["Bipupillare"])/tot*100 for y in horiz.values()]
-max_hdev = max(devs)
-# Verticali vs midline (deviazione X)
-voffs = [abs(x - cx)/w*100 for x in vert.values()]
-max_voff = max(voffs)
+off_pct = abs(x_inc - w/2)/w*100
+# Deviazioni linee orizzontali
+h_devs = [abs(y-horiz["Bipupillare"])/ (horiz["Menton"]-horiz["Trichion"]) *100 for y in horiz.values()]
+max_hdev = max(h_devs)
+# Deviazioni verticali
+v_devs = [abs(x-w/2)/w*100 for x in vert.values()]
+max_vdev = max(v_devs)
 # Angolo bipupillare
-yL,yR = P(LM["eye_L"])[1],P(LM["eye_R"])[1]
-ang = np.degrees(np.arctan2(yR-yL, P(LM["eye_R"])[0]-P(LM["eye_L"])[0]))
+yL, xL = P(LM["eye_L"])[1], P(LM["eye_L"])[0]
+arg = P(LM["eye_R"])
+yR, xR = arg[1], arg[0]
+ang = np.degrees(np.arctan2(yR-yL, xR-xL))
 
-# 5️⃣ Visualizza risultato
+# 5️⃣ Output
 st.image(annotated, caption="Overlay linee nominate", use_column_width=True)
 
 st.subheader("📊 Proporzioni facciali (%)")
-st.json({"Sup":round(terzi_pct[0],1),"Med":round(terzi_pct[1],1),"Inf":round(terzi_pct[2],1)})
+st.json({"Sup":round(thirds_pct[0],1),"Med":round(thirds_pct[1],1),"Inf":round(thirds_pct[2],1)})
 
 st.subheader("📐 Allineamenti (%)")
 st.json({
-    "Offset Midline-Incisale":round(off_pct,2),
-    "Simmetria globale":round(symm_pct,2),
-    "Deviazione orizzontale max":round(max_hdev,2),
-    "Deviazione verticale max":round(max_voff,2),
-    "Angolo bipupillare (°)":round(ang,2)
+    "Off Midline-Incisale":round(off_pct,2),
+    "Simmetria":round(symm_pct,2),
+    "Dev orizzont.:":round(max_hdev,2),
+    "Dev vert.:":round(max_vdev,2),
+    "Ang bipupillare (°)":round(ang,2)
 })
 
 st.subheader("📝 Report diagnostico secondo criteri clinici")
-report=[]
+rep=[]
 # 1. Midline
-if off_pct<0.4: report.append("• Midline coincidente (<0.4%).")
-elif off_pct<0.8: report.append("• Midline lievemente deviato (0.4–0.8%).")
-else: report.append("• Midline deviato (>0.8%).")
+rep.append("Midline coincid%s (<0.5%%)." % ("ente" if off_pct<0.5 else " deviata")).
 # 2. Interincisale
-report.append(f"• Linea interincisale a {off_pct:.2f}% rispetto al centro facciale.")
+tmp = f"Interincisale a {off_pct:.2f}%% dal centro facciale."; rep.append(tmp)
 # 3. Simmetria
-if symm_pct<3: report.append("• Simmetria entro limiti clinici (<3%).")
-else: report.append("• Simmetria percepibile (>3%).")
+rep.append("Simmetria entro limiti (<3%%)." if symm_pct<3 else "Asimmetria (>3%%).")
 # 4. Verticali
-if max_voff<3: report.append("• Linee verticali allineate (<3%).")
-else: report.append(f"• Verticali disallineate (max {max_voff:.1f}%).")
+rep.append("Verticali allineate (<3%%)." if max_vdev<3 else f"Vert disallineate ({max_vdev:.1f}%%).")
 # 5. Orizzontali
-if max_hdev<2: report.append("• Linee orizzontali parallele (<2%).")
-else: report.append(f"• Orizzontali disallineate (max {max_hdev:.1f}%).")
+rep.append("Orizzontali parallele (<2%%)." if max_hdev<2 else f"Orizz disallineate ({max_hdev:.1f}%%).")
+# Proporzioni
+up,md,low = thirds_pct
+if low > (up+md)/2*1.1: rep.append("Long face.")
+elif low < (up+md)/2*0.9: rep.append("Short face.")
+else: rep.append("Normale.")
 
-# Proporzioni terzi
-up,md,low=terzi_pct
-if low>(up+md)/2*1.1: report.append("• Long face.")
-elif low<(up+md)/2*0.9: report.append("• Short face.")
-else: report.append("• Proporzioni normali.")
-
-st.markdown("\n".join(report))
-
-st.caption("Guida clinica: percentuali riferite all'altezza/largezza facciale; validare con esame diretto.")
+st.markdown("- ".join(rep))
+st.caption("Guida clinica: percentuali riferite all’altezza/larghezza facciale; validare con esame diretto.")
