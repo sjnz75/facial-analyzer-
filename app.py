@@ -3,16 +3,12 @@ import numpy as np
 import cv2
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
-import io, base64      # ti servono ancora solo se in futuro farai export
+import base64, io
 
-# ---------- utility ----------
-def resize_for_canvas(img: Image.Image, max_w: int = 700) -> Image.Image:
-    """Riduce l’immagine preservando il rapporto se supera max_w pixel."""
-    if img.width > max_w:
-        ratio = max_w / img.width
-        new_size = (max_w, int(img.height * ratio))
-        return img.resize(new_size)
-    return img
+def pil_to_data_url(img: Image.Image) -> str:
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")          # Salviamo in PNG
+    return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
 
 # ---------- import moduli locali ----------
 from utils.geometry import (
@@ -41,7 +37,6 @@ if not uploaded_file:
 # lettura + resize
 image = Image.open(uploaded_file).convert("RGB")
 image = resize_for_canvas(image)
-image = image.convert("RGBA")        # 👈 aggiungi questa riga
 
 width, height = image.size
 
@@ -62,7 +57,7 @@ canvas_result = st_canvas(
     fill_color="",
     stroke_width=3,
     stroke_color="red",
-    background_image=image,      # ora è RGBA
+    background_image_url=pil_to_data_url(image),   # ← usa *background_image_url*
     update_streamlit=True,
     height=image.height,
     width=image.width,
