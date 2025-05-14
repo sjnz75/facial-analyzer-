@@ -4,7 +4,13 @@ import cv2
 from PIL import Image              #  ← spostalo qui, PRIMA di usare Image
 from streamlit_drawable_canvas import st_canvas
 import base64, io                  #  ← utility per data-URL
-
+def resize_for_canvas(img: Image.Image, max_w: int = 700) -> Image.Image:
+    """Riduce l’immagine preservando il rapporto se supera max_w pixel."""
+    if img.width > max_w:
+        ratio = max_w / img.width
+        new_size = (max_w, int(img.height * ratio))
+        return img.resize(new_size)
+    return img
 def pil_to_data_url(img: Image.Image) -> str:
     """Converte una PIL.Image in data-URL base64 (PNG) per st_canvas."""
     buf = io.BytesIO()
@@ -51,7 +57,7 @@ canvas_result = st_canvas(
     fill_color="",
     stroke_width=3,
     stroke_color="red",
- background_image=image,
+image = resize_for_canvas(image)
     update_streamlit=True,
     height=height,
     width=width,
