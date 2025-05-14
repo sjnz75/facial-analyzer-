@@ -46,7 +46,7 @@ canvas_result = st_canvas(
     height=height,
     width=width,
     drawing_mode="point",
-    point_display_size=10,
+
     key="canvas"
 )
 
