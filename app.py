@@ -40,7 +40,8 @@ if not uploaded_file:
 
 # lettura + resize
 image = Image.open(uploaded_file).convert("RGB")
-image = resize_for_canvas(image)     # max 700 px di larghezza
+image = resize_for_canvas(image)
+image = image.convert("RGBA")        # 👈 aggiungi questa riga
 
 width, height = image.size
 
