@@ -61,12 +61,11 @@ landmark_labels = [
 st.markdown("**Istruzioni:** clicca i punti nell'ordine e premi 'Termina selezione'.")
 
 canvas_result = st_canvas(
-    fill_color="",
     stroke_width=3,
     stroke_color="red",
-    background_image=image,          # PIL, già ridimensionata
-    background_color="#FFFFFF",      # ← forza sfondo bianco
-    update_streamlit=True,
+    background_image=image,      # PIL, già ridimensionata
+    background_color=None,       # 🌟 niente tinta sopra!
+    update_streamlit=False,      # 🌟 NON riscrivere ad ogni rerun
     height=image.height,
     width=image.width,
     drawing_mode="point",
