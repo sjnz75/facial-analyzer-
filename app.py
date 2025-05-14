@@ -62,14 +62,12 @@ canvas_result = st_canvas(
     fill_color="",
     stroke_width=3,
     stroke_color="red",
-    background_image=image,      # PIL
-    background_color="#00000000",
+    background_image=image,      # ora è RGBA
     update_streamlit=True,
     height=image.height,
     width=image.width,
     drawing_mode="point",
     point_display_radius=6,
-    display_toolbar=False,
     key="canvas"
 )
 st.write("DEBUG → size:", image.width, "x", image.height)
