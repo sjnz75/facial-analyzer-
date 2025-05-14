@@ -70,7 +70,9 @@ canvas_result = st_canvas(
     point_display_radius=6,
     key="canvas"
 )
-
+st.write("DEBUG → size:", image.width, "x", image.height)
+st.image(image.resize((150, int(150 * image.height / image.width))),
+         caption="DEBUG thumbnail (se la vedi, l’immagine è OK)")
 # ---------- elaborazione punti ----------
 if st.button("Termina selezione"):
     objs = canvas_result.json_data["objects"]
