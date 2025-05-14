@@ -1,65 +1,107 @@
-# app.py — Facial Aesthetic Analyzer **v1.4.2** (RGB + RGBA fix)
-# ===============================================================
-"""Fix critico
-* MediaPipe richiede un’immagine **RGB** (3 canali).  
-* Il canvas vuole **RGBA** (4 canali) per mostrare lo sfondo.  
-Ora creiamo **due** array:  
-- `img_rgb` → per FaceMesh  
-- `img_rgba` → per il canvas
-"""
-
-import streamlit as st, numpy as np, mediapipe as mp
-from PIL import Image, ImageOps
+import streamlit as st
+import numpy as np
+import cv2
+from PIL import Image
 from streamlit_drawable_canvas import st_canvas
+from utils.geometry import (
+    line_angle_deg,
+    line_deviation_mm,
+    segment_length,
+    compute_vertical_thirds
+)
+from utils.diagnostics import (
+    diagnose_median_line,
+    diagnose_angle_line,
+    diagnose_thirds
+)
 
-st.set_page_config(page_title="Facial Analyzer v1.4.2", layout="wide")
-st.title("📸 Facial Aesthetic Analyzer – v1.4.2 (interattivo)")
+st.set_page_config(page_title="Face Aesthetics Analyzer", layout="wide")
 
-st.markdown("Carica la foto, trascina le linee, clicca **Ricalcola diagnosi**.")
+st.title("Face Aesthetics Analyzer 🖼️➡️📊")
 
-MP_FACE = mp.solutions.face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1, refine_landmarks=True)
-LM={"glabella":9,"subnasale":2,"pogonion":152,"eye_L":33,"eye_R":263,"mouth_L":61,"mouth_R":291,"ala_L":98,"ala_R":327,"upper_incisor":13}
-PAIRS=[(LM["eye_L"],LM["eye_R"]),(LM["mouth_L"],LM["mouth_R"]),(LM["ala_L"],LM["ala_R"])]
+# Caricamento immagine
+uploaded_file = st.file_uploader("Carica un'immagine frontale del volto", type=["png", "jpg", "jpeg"])
+if not uploaded_file:
+    st.stop()
 
-file=st.file_uploader("🖼️ Carica immagine",type=["jpg","jpeg","png"])
-if not file: st.stop()
-img_pil=Image.open(file).convert("RGB")
-img_pil=ImageOps.exif_transpose(img_pil)
-if img_pil.width>800:
-    r=800/img_pil.width
-    img_pil=img_pil.resize((800,int(img_pil.height*r)))
+image = Image.open(uploaded_file).convert("RGB")
+width, height = image.size
 
-# Array RGB per MediaPipe
-img_rgb=np.array(img_pil)
-H,W=img_rgb.shape[:2]
+# Definizione dei landmark da cliccare in ordine
+landmark_labels = [
+    "Glabella (Gl)", "Subnasale (Sn)", "Pogonion (Pg')",                # Linea mediana
+    "Centro Pupilla Destra", "Centro Pupilla Sinistra",                # Interpupillare
+    "Commissura Destra", "Commissura Sinistra",                        # Commissurale
+    "Ala Nasale Destra", "Ala Nasale Sinistra",                        # Interalare
+    "Trichion (Tri)", "Glabella (Gl)", "Subnasale (Sn)", "Menton (Me')"  # Terzi verticali
+]
 
-# Array RGBA per canvas
-img_rgba=np.array(img_pil.convert("RGBA"))
+st.markdown("**Istruzioni:** clicca i punti nell'ordine mostrato e premi 'Termina selezione'.")
+canvas_result = st_canvas(
+    fill_color="",
+    stroke_width=3,
+    stroke_color="red",
+    background_image=image,
+    update_streamlit=True,
+    height=height,
+    width=width,
+    drawing_mode="point",
+    point_display_size=10,
+    key="canvas"
+)
 
-res=MP_FACE.process(img_rgb)
-if not res.multi_face_landmarks:
-    st.error("Volto non rilevato."); st.stop()
-lm=res.multi_face_landmarks[0].landmark
-P=lambda i: np.array([lm[i].x*W,lm[i].y*H])
+if st.button("Termina selezione"):
+    objs = canvas_result.json_data["objects"]
+    if len(objs) != len(landmark_labels):
+        st.error(f"Devi selezionare {len(landmark_labels)} punti, ne hai selezionati {len(objs)}.")
+        st.stop()
 
-# stima linee
-yG,yS,yP=P(LM["glabella"])[1],P(LM["subnasale"])[1],P(LM["pogonion"])[1]
-yT=max(0,int(2*yG-yS))
-yB=int((P(LM["eye_L"])[1]+P(LM["eye_R"])[1])/2)
+    # Estrazione coordinate
+    pts = {label: (obj["left"], obj["top"]) for label, obj in zip(landmark_labels, objs)}
 
-init={"Trichion":((0,yT),(W,yT),"#1E90FF"),"Glabella":((0,int(yG)),(W,int(yG)),"#1E90FF"),"Bipupillare":((0,yB),(W,yB),"#1E90FF"),"Subnasale":((0,int(yS)),(W,int(yS)),"#1E90FF"),"Interalare":((0,int(P(LM["ala_L"])[1])),(W,int(P(LM["ala_L"])[1])),"#1E90FF"),"Menton":((0,int(yP)),(W,int(yP)),"#1E90FF"),"Midline":((W//2,0),(W//2,H),"#32CD32"),"Interincisale":((int(P(LM["upper_incisor"])[0]),0),(int(P(LM["upper_incisor"])[0]),H),"#FF1493")}
-json_init={"version":"4.4.0","objects":[{"type":"line","name":k,"stroke":c,"strokeWidth":2,"x1":x1,"y1":y1,"x2":x2,"y2":y2} for k,((x1,y1),(x2,y2),c) in init.items()]}
+    # Calcoli geometrici
+    # Linea mediana
+    med_angle = line_angle_deg(pts["Glabella (Gl)"], pts["Pogonion (Pg')"])
+    med_dev = line_deviation_mm(pts["Glabella (Gl)"], pts["Subnasale (Sn)"], pts["Pogonion (Pg')"])
+    # Interpupillare
+    ip_angle = line_angle_deg(pts["Centro Pupilla Destra"], pts["Centro Pupilla Sinistra"], horizontal=True)
+    # Commissurale
+    com_angle = line_angle_deg(pts["Commissura Destra"], pts["Commissura Sinistra"], horizontal=True)
+    # Interalare: differenza y delle ali
+    ala_diff = abs(pts["Ala Nasale Destra"][1] - pts["Ala Nasale Sinistra"][1])
+    ala_angle = line_angle_deg(pts["Ala Nasale Destra"], pts["Ala Nasale Sinistra"], horizontal=True)
+    # Terzi verticali
+    thirds = compute_vertical_thirds(
+        pts["Trichion (Tri)"], pts["Glabella (Gl)"], pts["Subnasale (Sn)"], pts["Menton (Me')"]
+    )
 
-canvas=st_canvas(background_image=img_rgba, initial_drawing=json_init, update_streamlit=True, height=H, width=W, drawing_mode="transform", key="canvas")
-objs={o.get("name"):o for o in canvas.json_data.get("objects",[]) if o.get("name")} if canvas.json_data else {}
-cy=lambda n:(objs[n]["y1"]+objs[n]["y2"])/2
-cx=lambda n:(objs[n]["x1"]+objs[n]["x2"])/2
+    # Diagnosi
+    diag_med = diagnose_median_line(med_dev)
+    diag_ip = diagnose_angle_line(ip_angle, line_type="interpupillare")
+    diag_com = diagnose_angle_line(com_angle, line_type="commissurale")
+    diag_int = "Asimmetria medio-facciale" if ala_diff > 2 else "Normale"
+    diag_thirds = diagnose_thirds(thirds)
 
-if st.button("Ricalcola diagnosi") and objs:
-    if not all(k in objs for k in ["Trichion","Glabella","Subnasale","Menton","Midline","Interincisale"]):
-        st.error("Linee mancanti: ricarica pagina."); st.stop()
-    yT,yG,yS,yM=[cy(k) for k in ["Trichion","Glabella","Subnasale","Menton"]]
-    thirds=np.array([(yG-yT),(yS-yG),(yM-yS)])/(yM-yT)*100
-    off=abs(cx("Interincisale")-cx("Midline"))/W*100
-    sym=np.sqrt(np.mean([abs(P(a)[0]-(W-P(b)[0]))**2 for a,b in PAIRS]))/W*100
-    st.json({"Sup":round(float(thirds[0]),1),"Med":round(float(thirds[1]),1),"Inf":round(float(thirds[2]),1),"Midline":round(off,2),"Simmetria":round(sym,2)})
+    # Annotazione immagine
+    img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    # Disegna linee e angoli (esempio per interpupillare)
+    cv2.line(img_cv, tuple(map(int, pts["Centro Pupilla Destra"])), tuple(map(int, pts["Centro Pupilla Sinistra"])), (0,255,0), 2)
+    cv2.putText(img_cv, f"IP: {ip_angle:.1f}°", (10,30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
+    annotated = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
+    st.image(annotated, caption="Annotazione Clinica", use_column_width=True)
+
+    # Tabella riassuntiva
+    import pandas as pd
+    df = pd.DataFrame([
+        ["Linea Mediana", f"{med_dev:.1f} mm / {med_angle:.1f}°", diag_med],
+        ["Interpupillare", f"{ip_angle:.1f}°", diag_ip],
+        ["Commissurale", f"{com_angle:.1f}°", diag_com],
+        ["Interalare", f"{ala_diff:.1f} mm", diag_int],
+        ["Terzi Verticali", "; ".join([f"{v:.1f}%" for v in thirds]), "; ".join(diag_thirds)]
+    ], columns=["Linea", "Misura", "Diagnosi"] )
+    st.table(df)
+
+    # Commenti clinici aggiuntivi
+    st.markdown("**Commenti Clinici:**")
+    st.markdown(f"- Linea mediana: {diag_med}")
+    st.markdown(f"- Terzi verticali: {', '.join(diag_thirds)}")
