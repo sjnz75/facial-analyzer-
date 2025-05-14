@@ -13,7 +13,7 @@ def resize_for_canvas(img: Image.Image, max_w: int = 700) -> Image.Image:
         new_size = (max_w, int(img.height * ratio))
         return img.resize(new_size)
     return img
-
+bg_img = np.array(image)        # ← convertiamo in array (H, W, 3)
 # ---------- import moduli locali ----------
 from utils.geometry import (
     line_angle_deg,
@@ -43,8 +43,7 @@ image = Image.open(uploaded_file).convert("RGB")
 image = resize_for_canvas(image)           # <-- ridimensioniamo PRIMA del canvas
 width, height = image.size
 
-# anteprima per debug (puoi togliere questa riga quando tutto funziona)
-st.image(image, caption="Anteprima immagine caricata", use_column_width=True)
+
 
 # ---------- canvas ----------
 landmark_labels = [
@@ -58,15 +57,15 @@ landmark_labels = [
 st.markdown("**Istruzioni:** clicca i punti nell'ordine e premi 'Termina selezione'.")
 
 canvas_result = st_canvas(
-    fill_color="",                  # no fill
+    fill_color="",
     stroke_width=3,
     stroke_color="red",
-    background_image=image,         # PARAMETRO CORRETTO
+    background_image=bg_img,     # ← array NumPy, non PIL
     update_streamlit=True,
-    height=height,
-    width=width,
+    height=bg_img.shape[0],
+    width=bg_img.shape[1],
     drawing_mode="point",
-    point_display_radius=6,         # richiede streamlit-drawable-canvas 0.9.0
+    point_display_radius=6,
     key="canvas"
 )
 
