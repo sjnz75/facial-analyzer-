@@ -1,6 +1,14 @@
 import streamlit as st
 import numpy as np
 import cv2
+import base64, io
+
+def pil_to_data_url(img: Image.Image) -> str:
+    """Converte una PIL.Image in data-URL base64 (PNG) utilizzabile da st_canvas."""
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    data = base64.b64encode(buf.getvalue()).decode()
+    return f"data:image/png;base64,{data}"
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 from utils.geometry import (
