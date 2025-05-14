@@ -41,7 +41,7 @@ if not uploaded_file:
 # lettura + resize
 image = Image.open(uploaded_file).convert("RGB")
 image = resize_for_canvas(image)  
-bg_img = np.array(image)        # ← convertiamo in array (H, W, 3)# <-- ridimensioniamo PRIMA del canvas
+
 width, height = image.size
 
 
