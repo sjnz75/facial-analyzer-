@@ -61,10 +61,10 @@ landmark_labels = [
 st.markdown("**Istruzioni:** clicca i punti nell'ordine e premi 'Termina selezione'.")
 
 canvas_result = st_canvas(
-    fill_color="",
     stroke_width=3,
     stroke_color="red",
-    background_image_url=pil_to_data_url(image),   # ← usa background_image_url
+    background_image=image,      # oggetto PIL (già ridimensionato)
+    update_streamlit=False,      # ← evita il ridisegno “nero”
     height=image.height,
     width=image.width,
     drawing_mode="point",
