@@ -65,6 +65,7 @@ image = resize_for_canvas(image),
 
     key="canvas"
 )
+st.image(image, caption="Debug – immagine caricata", use_column_width=True)
 
 if st.button("Termina selezione"):
     objs = canvas_result.json_data["objects"]
