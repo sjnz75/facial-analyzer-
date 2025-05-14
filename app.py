@@ -54,18 +54,17 @@ landmark_labels = [
 
 st.markdown("**Istruzioni:** clicca i punti nell'ordine mostrato e premi 'Termina selezione'.")
 canvas_result = st_canvas(
-    fill_color="",
+    fill_color="",            # nessun riempimento
     stroke_width=3,
     stroke_color="red",
-image = resize_for_canvas(image),
+    background_image=image,   # ← QUI il parametro giusto
     update_streamlit=True,
-    height=height,
-    width=width,
+    height=image.height,
+    width=image.width,
     drawing_mode="point",
-
+    point_display_radius=6,   # disponibile dalla 0.9.0
     key="canvas"
 )
-st.image(image, caption="Debug – immagine caricata", use_column_width=True)
 
 if st.button("Termina selezione"):
     objs = canvas_result.json_data["objects"]
