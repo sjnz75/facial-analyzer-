@@ -4,14 +4,7 @@ import cv2
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 import io, base64      # ti servono ancora solo se in futuro farai export
-import base64, io
 
-def pil_to_data_url(img: Image.Image) -> str:
-    """Converte una PIL.Image in data-URL base64 (PNG) per st_canvas."""
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")           # PNG → opacità garantita
-    data = base64.b64encode(buf.getvalue()).decode()
-    return f"data:image/png;base64,{data}"
 # ---------- utility ----------
 def resize_for_canvas(img: Image.Image, max_w: int = 700) -> Image.Image:
     """Riduce l’immagine preservando il rapporto se supera max_w pixel."""
@@ -47,7 +40,7 @@ if not uploaded_file:
 
 # lettura + resize
 image = Image.open(uploaded_file).convert("RGB")
-image = resize_for_canvas(image)  
+image = resize_for_canvas(image)     # max 700 px di larghezza
 
 width, height = image.size
 
