@@ -58,15 +58,16 @@ landmark_labels = [
 st.markdown("**Istruzioni:** clicca i punti nell'ordine e premi 'Termina selezione'.")
 
 canvas_result = st_canvas(
-    fill_color="",
+    fill_color="",              # nessun riempimento
     stroke_width=3,
     stroke_color="red",
-    background_image=bg_img,     # ← array NumPy, non PIL
+    background_image=image,     # oggetto PIL (va bene!)
+    background_color=None,      # niente tinta sopra
     update_streamlit=True,
-    height=bg_img.shape[0],
-    width=bg_img.shape[1],
+    height=image.height,
+    width=image.width,
     drawing_mode="point",
-    point_display_radius=6,
+    point_display_radius=6,     # ok con streamlit-drawable-canvas 0.9.0
     key="canvas"
 )
 
