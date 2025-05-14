@@ -11,12 +11,7 @@ def resize_for_canvas(img: Image.Image, max_w: int = 700) -> Image.Image:
         new_size = (max_w, int(img.height * ratio))
         return img.resize(new_size)
     return img
-def pil_to_data_url(img: Image.Image) -> str:
-    """Converte una PIL.Image in data-URL base64 (PNG) per st_canvas."""
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    data = base64.b64encode(buf.getvalue()).decode()
-    return f"data:image/png;base64,{data}"
+
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 from utils.geometry import (
