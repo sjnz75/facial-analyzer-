@@ -13,7 +13,7 @@ def resize_for_canvas(img: Image.Image, max_w: int = 700) -> Image.Image:
         new_size = (max_w, int(img.height * ratio))
         return img.resize(new_size)
     return img
-bg_img = np.array(image)        # ← convertiamo in array (H, W, 3)
+
 # ---------- import moduli locali ----------
 from utils.geometry import (
     line_angle_deg,
@@ -40,7 +40,8 @@ if not uploaded_file:
 
 # lettura + resize
 image = Image.open(uploaded_file).convert("RGB")
-image = resize_for_canvas(image)           # <-- ridimensioniamo PRIMA del canvas
+image = resize_for_canvas(image)  
+bg_img = np.array(image)        # ← convertiamo in array (H, W, 3)# <-- ridimensioniamo PRIMA del canvas
 width, height = image.size
 
 
